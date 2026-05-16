@@ -64,9 +64,8 @@ app.get("/", (req, res) => {
   res.json({
     ok: true,
     app: "warehouse-reverb-draft-app",
-    purpose: "Find Airtable records ready for Warehouse Reverb draft creation",
     status: "running",
-    version: "categories-test-1"
+    version: "categories-clean-1"
   });
 });
 
@@ -111,12 +110,14 @@ app.get("/jobs/warehouse-reverb/test-reverb-shop", requireSecret, async (req, re
 
 app.get("/jobs/warehouse-reverb/test-categories", requireSecret, async (req, res) => {
   try {
-    const categories = await reverbGet("/categories/flat");
+    const data = await reverbGet("/categories/flat");
+
+    const categories = data.categories || [];
 
     res.json({
       ok: true,
-      count: Array.isArray(categories) ? categories.length : null,
-      categories: Array.isArray(categories) ? categories.slice(0, 50) : categories
+      count: categories.length,
+      categories: categories.slice(0, 50)
     });
   } catch (error) {
     console.error("test-categories error:", error);
