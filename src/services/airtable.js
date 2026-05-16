@@ -12,8 +12,20 @@ function escapeFormulaString(value) {
   return String(value).replace(/"/g, '\\"');
 }
 
-function getField(record, fieldName) {
-  return record.get(fieldName);
+function getField(fields, name, fallback = null) {
+  return fields[name] ?? fallback;
+}
+
+function getAttachmentUrls(fields, name) {
+  const attachments = fields[name];
+
+  if (!Array.isArray(attachments)) {
+    return [];
+  }
+
+  return attachments
+    .map((attachment) => attachment.url)
+    .filter(Boolean);
 }
 
 export async function findReadyWarehouseReverbDrafts() {
@@ -47,44 +59,59 @@ export async function findReadyWarehouseReverbDrafts() {
   return airtableRecords.map((record) => {
     const fields = record.fields;
 
+    const result = {
+      recordId: record.id,
+
+      sku: getField(fields, "SKU"),
+      name: getField(fields, "Name"),
+      generatedListingTitle: getField(fields, "Generated Listing Title"),
+      listingDescriptionDraft: getField(fields, "Listing Description Draft"),
+
+      price: getField(fields, "Price"),
+      productType: getField(fields, "Product Type"),
+      conditionRanking: getField(fields, "Condition Ranking"),
+      shippingProfile: getField(fields, "Shipping Profile"),
+
+      make: getField(fields, "Make"),
+      model: getField(fields, "Model"),
+      year: getField(fields, "Year"),
+      color: getField(fields, "Color"),
+      countryOfOrigin: getField(fields, "Country of Origin"),
+
+      body: getField(fields, "Body"),
+      neck: getField(fields, "Neck"),
+      fretboard: getField(fields, "Fretboard"),
+      pickups: getField(fields, "Pickups"),
+      weight: getField(fields, "Weight"),
+      case: getField(fields, "Case"),
+
+      conditionNotes: getField(fields, "Condition Notes"),
+      techNotes: getField(fields, "Tech Notes"),
+      repairNotes: getField(fields, "Repair Notes"),
+      testingNotes: getField(fields, "Testing Notes"),
+
+      photos: getAttachmentUrls(fields, "Photos"),
+      techPhotos: getAttachmentUrls(fields, "Tech Photos"),
+
+      photosCount: getAttachmentUrls(fields, "Photos").length,
+      techPhotosCount: getAttachmentUrls(fields, "Tech Photos").length
+    };
+
     console.log("READY WAREHOUSE REVERB RECORD:");
     console.log(JSON.stringify({
-      recordId: record.id,
-      sku: fields["SKU"],
-      name: fields["Name"],
-      generatedListingTitle: fields["Generated Listing Title"],
-      listingDescriptionDraft: fields["Listing Description Draft"],
-      productType: fields["Product Type"],
-      conditionRanking: fields["Condition Ranking"],
-      price: fields["Price"],
-      make: fields["Make"],
-      model: fields["Model"],
-      year: fields["Year"],
-      color: fields["Color"],
-      countryOfOrigin: fields["Country of Origin"],
-      shippingProfile: fields["Shipping Profile"],
-      weight: fields["Weight"],
-      photosCount: Array.isArray(fields["Photos"]) ? fields["Photos"].length : 0,
-      techPhotosCount: Array.isArray(fields["Tech Photos"]) ? fields["Tech Photos"].length : 0
+      recordId: result.recordId,
+      sku: result.sku,
+      title: result.generatedListingTitle || result.name,
+      price: result.price,
+      conditionRanking: result.conditionRanking,
+      shippingProfile: result.shippingProfile,
+      descriptionLength: result.listingDescriptionDraft
+        ? String(result.listingDescriptionDraft).length
+        : 0,
+      photosCount: result.photosCount,
+      techPhotosCount: result.techPhotosCount
     }, null, 2));
 
-    return {
-      recordId: record.id,
-      sku: fields["SKU"] || null,
-      name: fields["Name"] || null,
-      generatedListingTitle: fields["Generated Listing Title"] || null,
-      productType: fields["Product Type"] || null,
-      conditionRanking: fields["Condition Ranking"] || null,
-      price: fields["Price"] || null,
-      make: fields["Make"] || null,
-      model: fields["Model"] || null,
-      year: fields["Year"] || null,
-      color: fields["Color"] || null,
-      countryOfOrigin: fields["Country of Origin"] || null,
-      shippingProfile: fields["Shipping Profile"] || null,
-      weight: fields["Weight"] || null,
-      photosCount: Array.isArray(fields["Photos"]) ? fields["Photos"].length : 0,
-      techPhotosCount: Array.isArray(fields["Tech Photos"]) ? fields["Tech Photos"].length : 0
-    };
+    return result;
   });
 }
