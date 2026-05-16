@@ -91,7 +91,7 @@ function buildDraftPayload(record) {
   const allPhotos = [
     ...(record.photos || []),
     ...(record.techPhotos || [])
-  ];
+  ].filter(Boolean);
 
   return {
     state: "draft",
@@ -142,9 +142,7 @@ function buildDraftPayload(record) {
 
     shipping_profile_id: GUITAR_SHIPPING_PROFILE_ID,
 
-    photos: allPhotos.map((url) => ({
-      url
-    }))
+    photos: allPhotos
   };
 }
 
@@ -152,7 +150,7 @@ app.get("/", (req, res) => {
   res.json({
     ok: true,
     app: "warehouse-reverb-draft-app",
-    version: "condition-mapping-1"
+    version: "photos-as-url-array-1"
   });
 });
 
@@ -209,6 +207,7 @@ app.get("/jobs/warehouse-reverb/create-drafts", requireSecret, async (req, res) 
         sku: record.sku,
         title: payload.title,
         conditionRanking: record.conditionRanking,
+        descriptionLength: String(payload.description || "").length,
         photosCount: payload.photos.length,
         reverbListingId: selfHref ? selfHref.split("/").pop() : null,
         reverbUrl: webHref
