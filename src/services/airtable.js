@@ -26,10 +26,6 @@ export async function findReadyWarehouseReverbDrafts() {
   const reverbListingIdField = process.env.AIRTABLE_REVERB_LISTING_ID_FIELD || "Reverb Listing ID";
   const warehouseDestination = process.env.LISTING_DESTINATION_WAREHOUSE_REVERB || "Warehouse Reverb";
 
-  const skuField = process.env.AIRTABLE_SKU_FIELD || "SKU";
-  const priceField = process.env.AIRTABLE_PRICE_FIELD || "Price";
-  const statusField = process.env.AIRTABLE_STATUS_FIELD || "Status";
-
   Airtable.configure({ apiKey });
   const base = Airtable.base(baseId);
 
@@ -48,10 +44,47 @@ export async function findReadyWarehouseReverbDrafts() {
     })
     .all();
 
-  return airtableRecords.map((record) => ({
-    recordId: record.id,
-    sku: getField(record, skuField) || null,
-    price: getField(record, priceField) || null,
-    status: getField(record, statusField) || null
-  }));
+  return airtableRecords.map((record) => {
+    const fields = record.fields;
+
+    console.log("READY WAREHOUSE REVERB RECORD:");
+    console.log(JSON.stringify({
+      recordId: record.id,
+      sku: fields["SKU"],
+      name: fields["Name"],
+      generatedListingTitle: fields["Generated Listing Title"],
+      listingDescriptionDraft: fields["Listing Description Draft"],
+      productType: fields["Product Type"],
+      conditionRanking: fields["Condition Ranking"],
+      price: fields["Price"],
+      make: fields["Make"],
+      model: fields["Model"],
+      year: fields["Year"],
+      color: fields["Color"],
+      countryOfOrigin: fields["Country of Origin"],
+      shippingProfile: fields["Shipping Profile"],
+      weight: fields["Weight"],
+      photosCount: Array.isArray(fields["Photos"]) ? fields["Photos"].length : 0,
+      techPhotosCount: Array.isArray(fields["Tech Photos"]) ? fields["Tech Photos"].length : 0
+    }, null, 2));
+
+    return {
+      recordId: record.id,
+      sku: fields["SKU"] || null,
+      name: fields["Name"] || null,
+      generatedListingTitle: fields["Generated Listing Title"] || null,
+      productType: fields["Product Type"] || null,
+      conditionRanking: fields["Condition Ranking"] || null,
+      price: fields["Price"] || null,
+      make: fields["Make"] || null,
+      model: fields["Model"] || null,
+      year: fields["Year"] || null,
+      color: fields["Color"] || null,
+      countryOfOrigin: fields["Country of Origin"] || null,
+      shippingProfile: fields["Shipping Profile"] || null,
+      weight: fields["Weight"] || null,
+      photosCount: Array.isArray(fields["Photos"]) ? fields["Photos"].length : 0,
+      techPhotosCount: Array.isArray(fields["Tech Photos"]) ? fields["Tech Photos"].length : 0
+    };
+  });
 }
