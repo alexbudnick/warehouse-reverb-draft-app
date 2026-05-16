@@ -94,11 +94,31 @@ function getConditionUuid(conditionRanking) {
   );
 }
 
+function formatDescriptionForReverb(description) {
+  if (!description) return "";
+
+  return String(description)
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split(/\n{2,}/)
+    .map((paragraph) =>
+      paragraph
+        .trim()
+        .replace(/\n/g, "<br>")
+    )
+    .filter(Boolean)
+    .join("<br><br>");
+}
+
 function buildDraftPayload(record) {
   const allPhotos = [
     ...(record.photos || []),
     ...(record.techPhotos || [])
   ].filter(Boolean);
+
+  const rawDescription =
+    record.listingDescriptionDraft ||
+    `SKU: ${record.sku}`;
 
   return {
     state: "draft",
@@ -108,9 +128,7 @@ function buildDraftPayload(record) {
       record.name ||
       record.sku,
 
-    description:
-      record.listingDescriptionDraft ||
-      `SKU: ${record.sku}`,
+    description: formatDescriptionForReverb(rawDescription),
 
     make: record.make || "Unknown",
 
@@ -157,7 +175,7 @@ app.get("/", (req, res) => {
   res.json({
     ok: true,
     app: "warehouse-reverb-draft-app",
-    version: "real-condition-mapping-1"
+    version: "reverb-description-spacing-1"
   });
 });
 
