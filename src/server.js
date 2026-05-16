@@ -22,7 +22,7 @@ function requireSecret(req, res, next) {
   if (supplied !== expected) {
     return res.status(401).json({
       ok: false,
-      error: "Unauthorized: missing or invalid secret"
+      error: "Unauthorized"
     });
   }
 
@@ -33,24 +33,20 @@ async function reverbRequest(path, options = {}) {
   const base = process.env.REVERB_API_BASE || "https://api.reverb.com/api";
   const token = process.env.REVERB_PERSONAL_TOKEN;
 
-  if (!token) {
-    throw new Error("Missing REVERB_PERSONAL_TOKEN");
-  }
-
   const response = await fetch(`${base}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/hal+json",
       "Accept": "application/hal+json",
       "Accept-Version": "3.0",
-      "Authorization": `Bearer ${token}`,
-      ...(options.headers || {})
+      "Authorization": `Bearer ${token}`
     }
   });
 
   const text = await response.text();
 
   let data;
+
   try {
     data = JSON.parse(text);
   } catch {
@@ -58,14 +54,10 @@ async function reverbRequest(path, options = {}) {
   }
 
   if (!response.ok) {
-    throw new Error(`Reverb API error ${response.status}: ${JSON.stringify(data)}`);
+    throw new Error(`Reverb API ${response.status}: ${JSON.stringify(data)}`);
   }
 
   return data;
-}
-
-async function reverbGet(path) {
-  return reverbRequest(path, { method: "GET" });
 }
 
 async function reverbPost(path, body) {
@@ -75,46 +67,54 @@ async function reverbPost(path, body) {
   });
 }
 
-function pickTitle(record) {
-  return (
-    record.generatedListingTitle ||
-    record.name ||
-    record.sku ||
-    "Untitled Warehouse Reverb Draft"
-  );
-}
-
-function pickDescription(record) {
-  return (
-    record.listingDescriptionDraft ||
-    record.description ||
-    `SKU: ${record.sku || ""}`
-  );
-}
-
 function buildDraftPayload(record) {
   return {
     state: "draft",
-    title: pickTitle(record),
-    description: pickDescription(record),
+
+    title:
+      record.generatedListingTitle ||
+      record.name ||
+      record.sku,
+
+    description:
+      record.listingDescriptionDraft ||
+      `SKU: ${record.sku}`,
+
     make: record.make || "Unknown",
-    model: record.model || pickTitle(record),
-    finish: record.color || "Unknown",
-    year: record.year ? String(record.year) : "Unknown",
+
+    model:
+      record.model ||
+      record.name ||
+      "Unknown Model",
+
+    finish:
+      record.color ||
+      "Unknown",
+
+    year:
+      record.year
+        ? String(record.year)
+        : "Unknown",
+
     categories: [
       {
         uuid: ELECTRIC_GUITARS_CATEGORY_UUID
       }
     ],
+
     condition: {
       uuid: "b6f849d4-8c3f-4a65-9b40-6b018d0b7b80"
     },
+
     price: {
       amount: Number(record.price || 0),
       currency: "USD"
     },
+
     inventory: 1,
+
     sku: record.sku || undefined,
+
     shipping_profile_id: GUITAR_SHIPPING_PROFILE_ID
   };
 }
@@ -123,79 +123,18 @@ app.get("/", (req, res) => {
   res.json({
     ok: true,
     app: "warehouse-reverb-draft-app",
-    status: "running",
-    version: "create-draft-test-1"
+    version: "browser-draft-test"
   });
 });
 
-app.get("/jobs/warehouse-reverb/ready-drafts", requireSecret, async (req, res) => {
+app.get("/jobs/warehouse-reverb/create-drafts", requireSecret, async (req, res) => {
   try {
     const records = await findReadyWarehouseReverbDrafts();
 
-    res.json({
-      ok: true,
-      count: records.length,
-      records
-    });
-  } catch (error) {
-    console.error("ready-drafts error:", error);
-
-    res.status(500).json({
-      ok: false,
-      error: error.message
-    });
-  }
-});
-
-app.get("/jobs/warehouse-reverb/test-reverb-shop", requireSecret, async (req, res) => {
-  try {
-    const shop = await reverbGet("/shop");
-
-    res.json({
-      ok: true,
-      shopName: shop.name || null,
-      shopId: shop.id || null,
-      shippingProfiles: shop.shipping_profiles || []
-    });
-  } catch (error) {
-    console.error("test-reverb-shop error:", error);
-
-    res.status(500).json({
-      ok: false,
-      error: error.message
-    });
-  }
-});
-
-app.get("/jobs/warehouse-reverb/test-categories", requireSecret, async (req, res) => {
-  try {
-    const data = await reverbGet("/categories/flat");
-    const categories = data.categories || [];
-
-    res.json({
-      ok: true,
-      count: categories.length,
-      categories: categories.slice(0, 50)
-    });
-  } catch (error) {
-    console.error("test-categories error:", error);
-
-    res.status(500).json({
-      ok: false,
-      error: error.message
-    });
-  }
-});
-
-app.post("/jobs/warehouse-reverb/create-drafts", requireSecret, async (req, res) => {
-  try {
-    const records = await findReadyWarehouseReverbDrafts();
-
-    if (records.length === 0) {
+    if (!records.length) {
       return res.json({
         ok: true,
-        message: "No eligible Warehouse Reverb drafts found.",
-        created: []
+        message: "No draft-ready records found."
       });
     }
 
@@ -204,7 +143,7 @@ app.post("/jobs/warehouse-reverb/create-drafts", requireSecret, async (req, res)
     for (const record of records) {
       const payload = buildDraftPayload(record);
 
-      console.log("Creating Warehouse Reverb draft payload:");
+      console.log("CREATING REVERB DRAFT:");
       console.log(JSON.stringify(payload, null, 2));
 
       const result = await reverbPost("/listings", payload);
@@ -212,17 +151,17 @@ app.post("/jobs/warehouse-reverb/create-drafts", requireSecret, async (req, res)
       created.push({
         sku: record.sku,
         title: payload.title,
-        reverbResponse: result
+        reverbListingId: result.id || null,
+        reverbUrl: result._links?.web?.href || null
       });
     }
 
     res.json({
       ok: true,
-      count: created.length,
       created
     });
   } catch (error) {
-    console.error("create-drafts error:", error);
+    console.error(error);
 
     res.status(500).json({
       ok: false,
