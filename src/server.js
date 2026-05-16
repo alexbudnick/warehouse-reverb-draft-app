@@ -85,7 +85,7 @@ function buildDraftPayload(record) {
       }
     ],
     condition: {
-      uuid: "TEMP_CONDITION_UUID"
+      uuid: "ae4d9114-1bd7-4ec5-a4ba-6653af5ac84d"
     },
     price: {
       amount: Number(record.price || 0),
