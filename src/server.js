@@ -46,7 +46,6 @@ async function reverbRequest(path, options = {}) {
   const text = await response.text();
 
   let data;
-
   try {
     data = JSON.parse(text);
   } catch {
@@ -60,6 +59,10 @@ async function reverbRequest(path, options = {}) {
   return data;
 }
 
+async function reverbGet(path) {
+  return reverbRequest(path, { method: "GET" });
+}
+
 async function reverbPost(path, body) {
   return reverbRequest(path, {
     method: "POST",
@@ -70,51 +73,26 @@ async function reverbPost(path, body) {
 function buildDraftPayload(record) {
   return {
     state: "draft",
-
-    title:
-      record.generatedListingTitle ||
-      record.name ||
-      record.sku,
-
-    description:
-      record.listingDescriptionDraft ||
-      `SKU: ${record.sku}`,
-
+    title: record.generatedListingTitle || record.name || record.sku,
+    description: record.listingDescriptionDraft || `SKU: ${record.sku}`,
     make: record.make || "Unknown",
-
-    model:
-      record.model ||
-      record.name ||
-      "Unknown Model",
-
-    finish:
-      record.color ||
-      "Unknown",
-
-    year:
-      record.year
-        ? String(record.year)
-        : "Unknown",
-
+    model: record.model || record.name || "Unknown Model",
+    finish: record.color || "Unknown",
+    year: record.year ? String(record.year) : "Unknown",
     categories: [
       {
         uuid: ELECTRIC_GUITARS_CATEGORY_UUID
       }
     ],
-
     condition: {
-      uuid: "b6f849d4-8c3f-4a65-9b40-6b018d0b7b80"
+      uuid: "TEMP_CONDITION_UUID"
     },
-
     price: {
       amount: Number(record.price || 0),
       currency: "USD"
     },
-
     inventory: 1,
-
     sku: record.sku || undefined,
-
     shipping_profile_id: GUITAR_SHIPPING_PROFILE_ID
   };
 }
@@ -123,8 +101,26 @@ app.get("/", (req, res) => {
   res.json({
     ok: true,
     app: "warehouse-reverb-draft-app",
-    version: "browser-draft-test"
+    version: "conditions-test"
   });
+});
+
+app.get("/jobs/warehouse-reverb/test-conditions", requireSecret, async (req, res) => {
+  try {
+    const data = await reverbGet("/conditions");
+
+    res.json({
+      ok: true,
+      conditions: data.conditions || data
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      ok: false,
+      error: error.message
+    });
+  }
 });
 
 app.get("/jobs/warehouse-reverb/create-drafts", requireSecret, async (req, res) => {
