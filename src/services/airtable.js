@@ -37,9 +37,7 @@ export async function findReadyWarehouseReverbDrafts() {
   const baseId = requiredEnv("AIRTABLE_BASE_ID");
   const tableName = requiredEnv("AIRTABLE_TABLE_NAME");
 
-  const readyField = process.env.AIRTABLE_READY_FOR_DRAFT_FIELD || "Ready for Draft";
-  const readyForGuitarDraftField = process.env. || "Ready for Guitar Draft";
-  const readyForGearDraftField = process.env. || "Ready for Gear Draft";
+  const readyField = process.env.AIRTABLE_READY_FOR_DRAFT_FIELD || "Ready for Draft Push";
   const destinationField = process.env.AIRTABLE_LISTING_DESTINATION_FIELD || "Listing Destination";
   const reverbListingIdField = process.env.AIRTABLE_REVERB_LISTING_ID_FIELD || "Reverb Listing ID";
   const warehouseDestination = process.env.LISTING_DESTINATION_WAREHOUSE_REVERB || "Warehouse Reverb";
@@ -48,18 +46,17 @@ export async function findReadyWarehouseReverbDrafts() {
   const base = Airtable.base(baseId);
 
   const formula = `AND(
-    OR(
-      {${readyField}} = 1,
-      {${readyForGuitarDraftField}} = 1,
-      {${readyForGearDraftField}} = 1
-    ),
+    {${readyField}} = 1,
     {${destinationField}} = "${escapeFormulaString(warehouseDestination)}",
     {${reverbListingIdField}} = BLANK()
   )`;
 
   console.log("Airtable filter formula:", formula);
 
-  const airtableRecords = await base(tableName).select({ filterByFormula: formula, pageSize: 100 }).all();
+  const airtableRecords = await base(tableName).select({
+    filterByFormula: formula,
+    pageSize: 100
+  }).all();
 
   return airtableRecords.map((record) => {
     const fields = record.fields;
