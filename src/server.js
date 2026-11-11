@@ -351,6 +351,7 @@ async function updateReverbWriteback(recordId, listingId, listingUrl) {
     console.log("Updated Airtable writeback:", { recordId, listingId, listingUrl });
   } catch (error) {
     console.error("Failed Airtable writeback:", error);
+    throw error;
   }
 }
 
@@ -396,6 +397,27 @@ async function buildDraftPayload(req, record) {
   }
 
   return payload;
+}
+
+
+async function findExistingReverbSku(sku) {
+  let apiPath = "/my/listings?sku=" + encodeURIComponent(sku) + "&state=all&per_page=50";
+  const found = new Map(), visited = new Set();
+  while (apiPath) {
+    if (visited.has(apiPath) || visited.size >= 30) throw new Error("Incomplete existing-SKU lookup");
+    visited.add(apiPath);
+    const data = await reverbRequest(apiPath, {method:"GET"});
+    const listings = data.listings || data._embedded?.listings;
+    if (!Array.isArray(listings)) throw new Error("Existing-SKU response missing listings");
+    for (const item of listings) if (String(item.sku || item.inventory?.sku || "").trim() === sku) found.set(String(item.id),item);
+    const next = data._links?.next?.href;
+    if (!next) break;
+    const url = new URL(next, "https://api.reverb.com/api" + apiPath);
+    if (url.origin !== "https://api.reverb.com" || url.pathname !== "/api/my/listings") throw new Error("Unsafe existing-SKU pagination");
+    apiPath = url.pathname.slice(4) + url.search;
+  }
+  if (found.size !== 1) throw new Error("Existing SKU could not be linked uniquely: " + sku + " (" + found.size + " matches)");
+  return [...found.values()][0];
 }
 
 function duplicateSkuResult(record, error) {
@@ -516,8 +538,17 @@ app.get("/jobs/warehouse-reverb/create-drafts", requireSecret, async (req, res) 
         const duplicate = duplicateSkuResult(record, error);
 
         if (duplicate) {
-          console.warn("Skipping duplicate Reverb SKU and continuing batch:", record.sku);
-          skipped.push(duplicate);
+          try {
+            const existing = await findExistingReverbSku(record.sku);
+            const ids = resultInfo(existing);
+            if (!ids.reverbListingId) throw new Error("Existing Reverb listing ID missing");
+            await updateReverbWriteback(record.recordId, ids.reverbListingId, ids.reverbUrl);
+            skipped.push({...duplicate,...ids,status:"linked_existing",state:existing.state?.slug || existing.state});
+            console.log("Linked existing Reverb SKU:", {sku:record.sku,...ids});
+          } catch (linkError) {
+            failed.push({sku:record.sku,status:"existing_listing_requires_review",error:linkError.message});
+            console.error("Existing Reverb SKU needs review:", {sku:record.sku,error:linkError.message});
+          }
           continue;
         }
 
