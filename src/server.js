@@ -436,7 +436,10 @@ app.get("/jobs/warehouse-reverb/ready-drafts", requireSecret, async (req, res) =
 
 app.get("/jobs/warehouse-reverb/create-drafts", requireSecret, async (req, res) => {
   try {
-    const records = await findReadyWarehouseReverbDrafts();
+    const allReady = await findReadyWarehouseReverbDrafts();
+    const requestedSku = String(req.query.sku || "").trim();
+    const records = requestedSku ? allReady.filter(record => record.sku === requestedSku) : allReady;
+    if (requestedSku && records.length !== 1) return res.status(409).json({ok:false,error:"Expected exactly one draft-ready record for requested SKU",sku:requestedSku,count:records.length});
     if (!records.length) return res.json({ ok: true, message: "No draft-ready records found." });
 
     const created = [];
@@ -545,6 +548,46 @@ app.get("/jobs/warehouse-reverb/create-drafts", requireSecret, async (req, res) 
     console.error("create-drafts fatal error:", error);
     res.status(500).json({ ok: false, error: error.message });
   }
+});
+
+
+async function inspectExactReverbSkus(skus) {
+  const wanted = new Set(skus);
+  const matches = [];
+  const visited = new Set();
+  let apiPath = "/my/listings?per_page=50&page=1";
+  let scanned = 0;
+  while (apiPath) {
+    if (visited.has(apiPath) || visited.size >= 200) throw new Error("Incomplete or repeated Reverb pagination");
+    visited.add(apiPath);
+    const data = await reverbRequest(apiPath, {method:"GET"});
+    const listings = data.listings || data._embedded?.listings;
+    if (!Array.isArray(listings)) throw new Error("Reverb response missing listings");
+    for (const listing of listings) {
+      scanned++;
+      const sku = String(listing.sku || listing.inventory?.sku || "").trim();
+      if (wanted.has(sku)) matches.push({
+        sku, id:listing.id, title:listing.title,
+        state:listing.state?.slug || listing.state,
+        url:listing._links?.web?.href || listing.web_url || null,
+        photoCount:Array.isArray(listing.photos) ? listing.photos.length : null,
+        price:listing.price, offersEnabled:listing.offers_enabled
+      });
+    }
+    const next = data._links?.next?.href;
+    if (!next) { apiPath = null; continue; }
+    const url = new URL(next, "https://api.reverb.com/api" + apiPath);
+    if (url.origin !== "https://api.reverb.com" || !url.pathname.startsWith("/api/my/listings")) throw new Error("Unsafe Reverb pagination");
+    apiPath = url.pathname.slice(4) + url.search;
+  }
+  return {ok:true,complete:true,scanned,matches,missing:skus.filter(sku=>!matches.some(item=>item.sku===sku))};
+}
+app.get("/jobs/warehouse-reverb/inspect-skus", requireSecret, async(req,res)=>{
+  try {
+    const skus = [...new Set(String(req.query.skus || "").split(",").map(x=>x.trim()).filter(Boolean))];
+    if (!skus.length || skus.length > 25) return res.status(400).json({ok:false,error:"Provide 1 to 25 exact SKUs"});
+    res.json(await inspectExactReverbSkus(skus));
+  } catch(error) { res.status(500).json({ok:false,error:error.message}); }
 });
 
 app.listen(PORT, () => console.log(`Warehouse Reverb Draft App listening on port ${PORT}`));
