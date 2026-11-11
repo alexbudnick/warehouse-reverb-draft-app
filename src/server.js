@@ -323,6 +323,7 @@ async function getShippingProfileId(record) {
 }
 
 function resultInfo(result) {
+  result = result?.listing || result;
   const selfHref = result?._links?.self?.href || null;
   const webHref = result?._links?.web?.href || result?.web_url || result?.url || null;
   const idFromHref = selfHref ? selfHref.split("/").filter(Boolean).pop() : null;
@@ -364,6 +365,7 @@ async function buildDraftPayload(req, record) {
 
   const payload = {
     state: "draft",
+    offers_enabled: false,
     title: record.generatedListingTitle || record.name || record.sku,
     description: formatDescriptionForReverb(rawDescription),
     make: record.make || "Unknown",
@@ -555,7 +557,7 @@ async function inspectExactReverbSkus(skus) {
   const wanted = new Set(skus);
   const matches = [];
   const visited = new Set();
-  let apiPath = "/my/listings?per_page=50&page=1";
+  let apiPath = "/my/listings?state=all&per_page=50&page=1";
   let scanned = 0;
   while (apiPath) {
     if (visited.has(apiPath) || visited.size >= 200) throw new Error("Incomplete or repeated Reverb pagination");
