@@ -16,7 +16,6 @@ const DRY_RUN = String(process.env.DRY_RUN || "false").toLowerCase() === "true";
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "").replace(/\/$/, "");
 const IMAGE_DIR = process.env.REVERB_IMAGE_DIR || "/tmp/reverb-images";
 
-const DEFAULT_CATEGORY_UUID = process.env.REVERB_DEFAULT_CATEGORY_UUID || "dfd39027-d134-4353-b9e4-57dc6be791b9";
 const DEFAULT_SHIPPING_PROFILE_ID = process.env.REVERB_DEFAULT_SHIPPING_PROFILE_ID || "";
 
 
@@ -249,44 +248,82 @@ function formatDescriptionForReverb(description) {
     .join("<br><br>");
 }
 
+// Explicit Airtable labels, verified against Reverb /categories/flat.
+// Broad shared labels use a broad category; do not guess a subtype by substring.
+const AIRTABLE_CATEGORY_UUIDS = {
+  "Acoustic Electric Guitars": "09ea109a-5df1-4156-b00c-7456a3e5abf3",
+  "Effects and Pedals": "fa10f97c-dd98-4a8f-933b-8cb55eb653dd",
+  "Electric Guitars": "dfd39027-d134-4353-b9e4-57dc6be791b9",
+  "Drum Machines and Samplers": "e36bdc32-abba-45e2-948b-ce60153cbdd9",
+  "Bass Guitars": "53a9c7d7-d73d-4e7f-905c-553503e50a90",
+  "Keyboard Accessories": "62835d2e-ac92-41fc-9b8d-4aba8c1c25d5",
+  "Bass Guitar Necks": "3852c31e-5019-4cd6-8c60-ba5fd397cf43",
+  "Hollow Body Electric Guitars": "5db35d7e-2b7e-4dcf-a73b-6a144c710956",
+  "Synths": "d002db05-ab63-4c79-999c-d49bbe8d7739",
+  "Semi-Hollow Body Electric Guitars": "6a63ac2e-f2a5-4064-b6ea-0393f42ee497",
+  "Short Scale Basses": "07276aa7-6f18-4cae-a691-e6043b002fa4",
+  "Multi-Effects Pedals and Processors": "2d6093b4-6b33-474e-b07c-25f6657d7956",
+  "Guitar Pickups": "ed9714d2-2b98-4e1e-b85e-eb2f948a8985",
+  "Guitar Necks": "c33e4de7-7ec0-4de9-912c-98a4dcb268c8",
+  "Wireless Receivers": "58d52275-f213-4c21-919e-c38a7c9f35bc",
+  "Bass 5+ String": "3178be7d-f1cd-4da5-a606-bf3c1b8e834d",
+  "Microphones": "0f2bbf76-3225-44d5-8a5b-c540cc1fd058",
+  "Gates and Expanders": "10187eaa-7746-4978-9f44-7670e95a40da",
+  "Audio Interfaces": "dfb72735-b7a3-4c8f-9b14-0d1dd904af1e",
+  "Acoustic Guitars": "3ca3eb03-7eac-477d-b253-15ce603d2550",
+  "Pro Audio": "b021203f-1ed8-476c-a8fc-32d4e3b0ef9e",
+  "Modeling Amps": "0338462f-285a-4273-afde-47c4fc752e3f",
+  "Baritone Electric Guitars": "8f8b1f88-83f5-449c-8c93-b57cf3ba1fd7",
+  "Classical Guitars": "a7f470d1-266d-4495-b4d6-998cc84b7474",
+  "Compressors and Limiters": "8865016e-edbb-4ee7-a704-6ea0652d6bf4",
+  "Recording Gear": "36a0faca-93b7-4ad1-ab09-02629ec1e900",
+  "12 String Electric Guitars": "80d6ce96-487c-4ac1-ad10-d4bef6336fe6",
+  "Tuner Pedals": "69a7e38f-0ce8-42ea-a0f6-8a30b7f6886e",
+  "Preamps": "4d45f512-4dd5-4dae-95b7-7eb400ce406b",
+  "Amplifiers": "09055aa7-ed49-459d-9452-aa959f288dc2",
+  "Amp Heads": "19d53222-297e-410c-ba4f-b48678e917f9",
+  "7 String Electric Guitars": "dfd39027-d134-4353-b9e4-57dc6be791b9",
+  "Bass Effect Pedals": "c6602a28-e2e7-4e70-abeb-0fa38b320be6",
+  "Drum Machines": "e36bdc32-abba-45e2-948b-ce60153cbdd9",
+  "Digital Synthesizers": "75b1e4a3-dbb4-46c5-8386-fa18546e097a",
+  "Guitar Synth": "7e6b6d7c-cdd5-4a42-bceb-6ea12899137b",
+  "Straps": "1b357626-300e-47dd-85b0-bf657bca1a96",
+  "12 String Acoustic Guitars": "14d6cc96-ed7b-4521-bc21-7713c61e9dc5",
+  "Noise Reduction and Gates": "8745626e-3273-4f9d-b7a1-ca5b202a8e6e",
+  "Left Handed Guitars": "c86f64cf-43df-4430-a2bf-b4126d81c5bd",
+  "Multi-Effect Reverb": "101acc1f-ae38-4e27-9fde-1948498618aa",
+  "DI Boxes": "0bbe9f3e-7a6e-4654-862f-96dd6136c9b3",
+  "Utility": "4a1f4a3a-c266-4771-b473-ec547b835e55",
+  "Amp Parts": "eb1827f3-c02c-46ff-aea9-7983e2aae1b4",
+  "Grooveboxes": "b3608028-206e-467c-8d93-db5489b1727b",
+  "Bass Pickups": "96843abf-85ee-4d86-93e9-3140d698f1b7",
+  "DJ Controllers": "5737678f-8d15-4df2-b402-869d5bfc04bd",
+  "Accessories": "62835d2e-ac92-41fc-9b8d-4aba8c1c25d5"
+};
+
 async function getCategoryUuid(record) {
-  const value = record.reverbCategoryUuid || record.productType;
-  if (looksLikeUuid(value)) return String(value).trim();
-
+  const value = String(record.reverbCategoryUuid || record.productType || "").trim();
+  if (looksLikeUuid(value)) return value;
   const categoryMap = parseJsonEnv("REVERB_CATEGORY_MAP_JSON", {});
-  const mapped = categoryMap[value] || categoryMap[normalize(value)];
-  if (mapped) return mapped;
-
-  if (!value) return DEFAULT_CATEGORY_UUID;
-
-  try {
-    if (!categoryCache) {
-      const data = await reverbRequest("/categories/flat", { method: "GET" });
-      const objects = flattenObjects(data);
-      categoryCache = objects
-        .filter((item) => item?.uuid)
-        .map((item) => ({
-          uuid: item.uuid,
-          name: item.name || item.display_name || item.full_name || item.slug || "",
-          fullName: item.full_name || item.fullName || item.name || item.display_name || ""
-        }));
-    }
-
-    const wanted = normalize(value);
-    const exact = categoryCache.find((category) =>
-      normalize(category.fullName) === wanted || normalize(category.name) === wanted
-    );
-    if (exact?.uuid) return exact.uuid;
-
-    const contains = categoryCache.find((category) =>
-      normalize(category.fullName).includes(wanted) || wanted.includes(normalize(category.fullName))
-    );
-    if (contains?.uuid) return contains.uuid;
-  } catch (error) {
-    console.warn("Could not resolve Reverb category from API; using default category:", error.message);
+  const wanted = normalize(value);
+  const configured = Object.entries(categoryMap).find(([key]) => normalize(key) === wanted);
+  if (configured) {
+    if (!looksLikeUuid(configured[1])) throw new Error(`Invalid Reverb category mapping for: ${value}`);
+    return String(configured[1]).trim();
   }
-
-  return DEFAULT_CATEGORY_UUID;
+  const known = Object.entries(AIRTABLE_CATEGORY_UUIDS).find(([key]) => normalize(key) === wanted);
+  if (known) return known[1];
+  if (!wanted) throw new Error("Missing Airtable product category; Reverb draft blocked");
+  if (!categoryCache) {
+    const data = await reverbRequest("/categories/flat", { method: "GET" });
+    categoryCache = (data.categories || []).filter(item => item?.uuid && item.listable !== false);
+  }
+  const matches = categoryCache.filter(category =>
+    [category.full_name, category.name, category.collection_title].some(name => normalize(name) === wanted)
+  );
+  const unique = [...new Set(matches.map(category => category.uuid))];
+  if (unique.length === 1) return unique[0];
+  throw new Error(`Unmapped or ambiguous Reverb category: ${value}; Reverb draft blocked`);
 }
 
 async function getShippingProfileId(record) {
