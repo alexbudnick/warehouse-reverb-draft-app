@@ -303,27 +303,31 @@ const AIRTABLE_CATEGORY_UUIDS = {
 
 async function getCategoryUuid(record) {
   const value = String(record.reverbCategoryUuid || record.productType || "").trim();
+  const fallback = process.env.REVERB_DEFAULT_CATEGORY_UUID || "dfd39027-d134-4353-b9e4-57dc6be791b9";
   if (looksLikeUuid(value)) return value;
   const categoryMap = parseJsonEnv("REVERB_CATEGORY_MAP_JSON", {});
   const wanted = normalize(value);
   const configured = Object.entries(categoryMap).find(([key]) => normalize(key) === wanted);
-  if (configured) {
-    if (!looksLikeUuid(configured[1])) throw new Error(`Invalid Reverb category mapping for: ${value}`);
-    return String(configured[1]).trim();
-  }
+  if (configured && looksLikeUuid(configured[1])) return String(configured[1]).trim();
   const known = Object.entries(AIRTABLE_CATEGORY_UUIDS).find(([key]) => normalize(key) === wanted);
   if (known) return known[1];
-  if (!wanted) throw new Error("Missing Airtable product category; Reverb draft blocked");
-  if (!categoryCache) {
-    const data = await reverbRequest("/categories/flat", { method: "GET" });
-    categoryCache = (data.categories || []).filter(item => item?.uuid && item.listable !== false);
+  if (wanted) {
+    try {
+      if (!categoryCache) {
+        const data = await reverbRequest("/categories/flat", { method: "GET" });
+        categoryCache = (data.categories || []).filter(item => item?.uuid && item.listable !== false);
+      }
+      const matches = categoryCache.filter(category =>
+        [category.full_name, category.name, category.collection_title].some(name => normalize(name) === wanted)
+      );
+      const unique = [...new Set(matches.map(category => category.uuid))];
+      if (unique.length === 1) return unique[0];
+    } catch (error) {
+      console.warn("Could not resolve Reverb category; sending draft with default:", error.message);
+    }
   }
-  const matches = categoryCache.filter(category =>
-    [category.full_name, category.name, category.collection_title].some(name => normalize(name) === wanted)
-  );
-  const unique = [...new Set(matches.map(category => category.uuid))];
-  if (unique.length === 1) return unique[0];
-  throw new Error(`Unmapped or ambiguous Reverb category: ${value}; Reverb draft blocked`);
+  console.warn("Using default Reverb category:", { sku: record.sku, productType: value || "(blank)", categoryUuid: fallback });
+  return fallback;
 }
 
 async function getShippingProfileId(record) {
